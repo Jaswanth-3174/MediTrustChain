@@ -1,0 +1,76 @@
+import { useEffect, useState } from "react";
+import { connectWallet, getRecords } from "../lib/eth";
+import { cacheGet, cacheSet } from "../lib/cache";
+import { ipfsGatewayUrl } from "../lib/pinata";
+
+export default function PatientDashboard() {
+  const [account, setAccount] = useState("");
+  const [records, setRecords] = useState([]);
+  const [status, setStatus] = useState("");
+
+  const onConnect = async () => {
+    try {
+      const { account } = await connectWallet();
+      setAccount(account);
+    } catch (e) {
+      setStatus(e.message);
+    }
+  };
+
+  useEffect(() => {
+    if (!account) return;
+    // show cached records instantly
+    const cached = cacheGet(account);
+    if (cached.length) setRecords(cached);
+
+    (async () => {
+      setStatus("Fetching records from blockchain...");
+      try {
+        const list = await getRecords(account);
+        setRecords(list);
+        cacheSet(account, list);
+        setStatus("");
+      } catch (err) {
+        setStatus(err.message || String(err));
+      }
+    })();
+  }, [account]);
+
+  return (
+    <div className="min-h-screen p-6 max-w-3xl mx-auto">
+      <header className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-semibold">Patient Dashboard</h2>
+        <button onClick={onConnect} className="px-4 py-2 bg-indigo-600 text-white rounded">
+          {account ? account.slice(0, 6) + "..." + account.slice(-4) : "Connect MetaMask"}
+        </button>
+      </header>
+
+      {status && <p className="text-sm text-gray-600 mb-4">{status}</p>}
+      <div className="bg-white rounded-lg shadow p-4">
+        <h3 className="font-medium mb-2">My Records</h3>
+        {records.length === 0 ? (
+          <p className="text-gray-500 text-sm">No records yet.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left">
+                <th className="p-2">Description</th>
+                <th className="p-2">Date</th>
+                <th className="p-2">IPFS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {records.map((r, i) => (
+                <tr key={i} className="border-t">
+                  <td className="p-2">{r.description}</td>
+                  <td className="p-2">{new Date(Number(r.timestamp) * 1000).toLocaleString()}</td>
+                  <td className="p-2"><a href={ipfsGatewayUrl(r.cid)} target="_blank" rel="noreferrer" className="text-indigo-600">View</a></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
