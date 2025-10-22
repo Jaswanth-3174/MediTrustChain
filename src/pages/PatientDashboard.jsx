@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { connectWallet, getRecords, ensureLocalChain, getProvider } from "../lib/eth";
+import { connectWallet, getRecords } from "../lib/eth";
 import { cacheGet, cacheSet } from "../lib/cache";
 import { ipfsGatewayUrl } from "../lib/pinata";
 
@@ -7,7 +7,6 @@ export default function PatientDashboard() {
   const [account, setAccount] = useState("");
   const [records, setRecords] = useState([]);
   const [status, setStatus] = useState("");
-  const [loadedSilently, setLoadedSilently] = useState(false);
 
   const onConnect = async () => {
     try {
@@ -19,18 +18,13 @@ export default function PatientDashboard() {
     }
   };
 
-  // Attempt silent connect on mount if MetaMask already authorized and ensure we're on local chain
+  // Force MetaMask prompt on page open as requested
   useEffect(() => {
     (async () => {
       try {
-        const provider = getProvider();
-        await ensureLocalChain(provider);
-        const accs = await provider.send("eth_accounts", []);
-        if (Array.isArray(accs) && accs.length) {
-          setAccount(accs[0]);
-          try { localStorage.setItem("lastAccount", accs[0]); } catch {}
-          setLoadedSilently(true);
-        }
+        const { account } = await connectWallet();
+        setAccount(account);
+        try { localStorage.setItem("lastAccount", account); } catch {}
       } catch {}
     })();
   }, []);
@@ -82,7 +76,7 @@ export default function PatientDashboard() {
         </button>
       </header>
 
-      {loadedSilently && !status && !records.length && (
+      {!status && !records.length && (
         <p className="text-sm text-gray-600 mb-2">Loading your records from the blockchain…</p>
       )}
       {status && <p className="text-sm text-gray-600 mb-4">{status}</p>}

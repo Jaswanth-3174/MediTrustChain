@@ -210,3 +210,13 @@ export async function diagnoseContractMismatch() {
   }
   return result;
 }
+
+export async function pingLocalRpc(url = "http://127.0.0.1:7545") {
+  try {
+    const p = new ethers.JsonRpcProvider(url);
+    await p.getBlockNumber();
+    return true;
+  } catch {
+    return false;
+  }
+}

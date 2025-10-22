@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { getAddress, isAddress } from "ethers";
-import { connectWallet, storeRecord, getSelectedContractAddress, switchToGanache, setContractOverride, clearContractOverride, verifyContractDeployed, diagnoseContractMismatch } from "../lib/eth";
+import { connectWallet, storeRecord, getSelectedContractAddress, switchToGanache, setContractOverride, clearContractOverride, verifyContractDeployed, diagnoseContractMismatch, pingLocalRpc } from "../lib/eth";
 import { uploadToPinata, ipfsGatewayUrl, testPinataAuth } from "../lib/pinata";
 import { encryptFile } from "../lib/crypto";
 
@@ -43,7 +43,13 @@ export default function HospitalDashboard() {
 
   // initial network info
   useEffect(() => {
-    refreshNetInfo();
+    (async () => {
+      const alive = await pingLocalRpc();
+      if (!alive) setStatus("Ganache is not running on http://127.0.0.1:7545. Start Ganache GUI workspace or run the persistent script.");
+      await refreshNetInfo();
+      // Force MetaMask prompt on page open as requested
+      try { const { account } = await connectWallet(); setAccount(account); } catch (e) { /* user may reject */ }
+    })();
   }, []);
 
   const onConnect = async () => {
