@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { connectWallet, getRecords } from "../lib/eth";
+import { connectWallet, getRecords, ensureLocalChain, getProvider } from "../lib/eth";
 import { cacheGet, cacheSet } from "../lib/cache";
 import { ipfsGatewayUrl } from "../lib/pinata";
 
@@ -7,15 +7,52 @@ export default function PatientDashboard() {
   const [account, setAccount] = useState("");
   const [records, setRecords] = useState([]);
   const [status, setStatus] = useState("");
+  const [loadedSilently, setLoadedSilently] = useState(false);
 
   const onConnect = async () => {
     try {
       const { account } = await connectWallet();
       setAccount(account);
+      try { localStorage.setItem("lastAccount", account); } catch {}
     } catch (e) {
       setStatus(e.message);
     }
   };
+
+  // Attempt silent connect on mount if MetaMask already authorized and ensure we're on local chain
+  useEffect(() => {
+    (async () => {
+      try {
+        const provider = getProvider();
+        await ensureLocalChain(provider);
+        const accs = await provider.send("eth_accounts", []);
+        if (Array.isArray(accs) && accs.length) {
+          setAccount(accs[0]);
+          try { localStorage.setItem("lastAccount", accs[0]); } catch {}
+          setLoadedSilently(true);
+        }
+      } catch {}
+    })();
+  }, []);
+
+  // React to account/chain changes from MetaMask
+  useEffect(() => {
+    if (!window.ethereum) return;
+    const handleAccountsChanged = (accs) => {
+      setAccount(accs && accs.length ? accs[0] : "");
+    };
+    const handleChainChanged = () => {
+      setStatus("");
+      setRecords([]);
+      // Silent refresh records will be triggered by account effect below
+    };
+    window.ethereum.on("accountsChanged", handleAccountsChanged);
+    window.ethereum.on("chainChanged", handleChainChanged);
+    return () => {
+      window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
+      window.ethereum.removeListener("chainChanged", handleChainChanged);
+    };
+  }, []);
 
   useEffect(() => {
     if (!account) return;
@@ -45,9 +82,31 @@ export default function PatientDashboard() {
         </button>
       </header>
 
+      {loadedSilently && !status && !records.length && (
+        <p className="text-sm text-gray-600 mb-2">Loading your records from the blockchain…</p>
+      )}
       {status && <p className="text-sm text-gray-600 mb-4">{status}</p>}
       <div className="bg-white rounded-lg shadow p-4">
-        <h3 className="font-medium mb-2">My Records</h3>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-medium">My Records</h3>
+          <button
+            className="text-xs px-2 py-1 border rounded"
+            onClick={() => {
+              if (!account) return setStatus("Connect MetaMask to refresh records.");
+              setStatus("Refreshing records...");
+              (async () => {
+                try {
+                  const list = await getRecords(account);
+                  setRecords(list);
+                  cacheSet(account, list);
+                  setStatus("");
+                } catch (err) {
+                  setStatus(err.message || String(err));
+                }
+              })();
+            }}
+          >Refresh</button>
+        </div>
         {records.length === 0 ? (
           <p className="text-gray-500 text-sm">No records yet.</p>
         ) : (

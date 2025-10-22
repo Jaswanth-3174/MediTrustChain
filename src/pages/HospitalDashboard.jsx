@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { getAddress, isAddress } from "ethers";
-import { connectWallet, storeRecord, getSelectedContractAddress, switchToGanache } from "../lib/eth";
+import { connectWallet, storeRecord, getSelectedContractAddress, switchToGanache, setContractOverride, clearContractOverride, verifyContractDeployed, diagnoseContractMismatch } from "../lib/eth";
 import { uploadToPinata, ipfsGatewayUrl, testPinataAuth } from "../lib/pinata";
 import { encryptFile } from "../lib/crypto";
 
@@ -13,7 +13,9 @@ export default function HospitalDashboard() {
   const [recent, setRecent] = useState([]);
   const [useEncryption, setUseEncryption] = useState(false);
   const [passphrase, setPassphrase] = useState("");
-  const [netInfo, setNetInfo] = useState({ chainId: "?", address: "?" });
+  const [netInfo, setNetInfo] = useState({ chainId: "?", address: "?", source: "?", hasCode: false });
+  const [overrideInput, setOverrideInput] = useState("");
+  const [mismatch, setMismatch] = useState(null);
 
   const onTestPinata = async () => {
     setStatus("Testing Pinata authentication...");
@@ -27,10 +29,15 @@ export default function HospitalDashboard() {
 
   const refreshNetInfo = async () => {
     try {
-      const { address, chainId } = await getSelectedContractAddress();
-      setNetInfo({ chainId, address });
+      const { address, chainId, source } = await getSelectedContractAddress();
+      let hasCode = false;
+      if (address && address.startsWith("0x") && address.length === 42) {
+        try { hasCode = await verifyContractDeployed(address); } catch {}
+      }
+      setNetInfo({ chainId, address, source, hasCode });
+      try { setMismatch(await diagnoseContractMismatch()); } catch {}
     } catch (e) {
-      setNetInfo({ chainId: "?", address: e?.message || "n/a" });
+      setNetInfo({ chainId: "?", address: e?.message || "n/a", source: "?", hasCode: false });
     }
   };
 
@@ -103,13 +110,58 @@ export default function HospitalDashboard() {
       </header>
 
       <form onSubmit={onSubmit} className="bg-white rounded-lg shadow p-4 space-y-4">
-        <div className="text-xs text-gray-600 flex items-center justify-between">
-          <div>ChainId: <span className="font-mono">{netInfo.chainId}</span> · Contract: <span className="font-mono">{netInfo.address}</span></div>
+        <div className="text-xs text-gray-600 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            ChainId: <span className="font-mono">{netInfo.chainId}</span> · Contract: <span className="font-mono">{netInfo.address}</span>
+            <span className={`ml-2 ${netInfo.hasCode ? "text-green-700" : "text-red-700"}`}>[{netInfo.hasCode ? "code found" : "no code"}]</span>
+            {netInfo.source && <span className="ml-2 text-gray-500">({netInfo.source})</span>}
+          </div>
           <div className="flex gap-2">
             <button type="button" className="px-2 py-1 border rounded" onClick={refreshNetInfo}>Refresh</button>
             <button type="button" className="px-2 py-1 border rounded" onClick={async () => { try { await switchToGanache(); await refreshNetInfo(); } catch (e) { setStatus(e.message || String(e)); } }}>Switch to Ganache</button>
           </div>
         </div>
+        <div className="bg-gray-50 border rounded p-2 text-xs">
+          <div className="font-medium mb-1">Contract address override (use if Ganache restarted)</div>
+          <div className="flex gap-2 items-center flex-wrap">
+            <input value={overrideInput} onChange={(e) => setOverrideInput(e.target.value)} placeholder="0x... custom address" className="border rounded px-2 py-1 text-sm min-w-[280px]" />
+            <button type="button" className="px-2 py-1 border rounded" onClick={async () => {
+              try {
+                if (!netInfo.chainId || netInfo.chainId === "?") throw new Error("Unknown chainId");
+                await setContractOverride(netInfo.chainId, overrideInput);
+                setStatus("Override set.");
+                await refreshNetInfo();
+              } catch (e) {
+                setStatus(e.message || String(e));
+              }
+            }}>Set Override</button>
+            <button type="button" className="px-2 py-1 border rounded" onClick={async () => {
+              try {
+                if (!netInfo.chainId || netInfo.chainId === "?") throw new Error("Unknown chainId");
+                await clearContractOverride(netInfo.chainId);
+                setStatus("Override cleared.");
+                await refreshNetInfo();
+              } catch (e) {
+                setStatus(e.message || String(e));
+              }
+            }}>Clear Override</button>
+          </div>
+        </div>
+
+        {mismatch && mismatch.address && mismatch.metaMaskHasCode === false && mismatch.localRpcHasCode === true && (
+          <div className="bg-yellow-50 border border-yellow-300 rounded p-3 text-xs">
+            <div className="font-medium text-yellow-800 mb-1">Network mismatch detected</div>
+            <p className="text-yellow-800">
+              Your MetaMask is on chain {mismatch.chainId} but reports no code at {mismatch.address}. The local RPC {mismatch.localRpc} has code at this address.
+              This usually means your MetaMask Ganache network is pointing to a different RPC URL.
+            </p>
+            <ul className="list-disc ml-5 mt-1 text-yellow-800">
+              <li>Open MetaMask → Networks → select your Ganache network.</li>
+              <li>Set RPC URL to <span className="font-mono">{mismatch.localRpc}</span> and Chain ID to 1337.</li>
+              <li>Back here, click “Switch to Ganache” and then “Refresh”.</li>
+            </ul>
+          </div>
+        )}
         <div>
           <label className="block text-sm font-medium">Patient Wallet Address</label>
           <input value={patient} onChange={(e) => setPatient(e.target.value)} placeholder="0x..." className="mt-1 w-full border rounded px-3 py-2" />

@@ -1,4 +1,4 @@
-import { ethers } from "ethers";
+import { ethers, isAddress, getAddress as normalizeAddress } from "ethers";
 import abi from "../abi/MediTrust.json";
 import singleAddress from "../contracts/address.json";
 import addressesByChain from "../contracts/addresses.json";
@@ -8,9 +8,10 @@ export const getProvider = () => {
   return new ethers.BrowserProvider(window.ethereum);
 };
 
-const HARDHAT = { chainId: "0x7A69", id: 31337, name: "Hardhat Local", rpc: ["http://127.0.0.1:8545"] };
-const GANACHE = { chainId: "0x539", id: 1337, name: "Ganache Local", rpc: ["http://127.0.0.1:7545"] };
-const GANACHE_ALT = { chainId: "0x1691", id: 5777, name: "Ganache Local 5777", rpc: ["http://127.0.0.1:7545"] };
+const HARDHAT = { chainId: "0x7A69", id: 31337, name: "Hardhat Local", rpc: [process.env.REACT_APP_HARDHAT_RPC || "http://127.0.0.1:8545"] };
+// Allow overriding Ganache RPC/chainIds via env. Defaults match typical Ganache GUI/CLI.
+const GANACHE = { chainId: (process.env.REACT_APP_GANACHE_CHAIN_ID_HEX || "0x539"), id: parseInt((process.env.REACT_APP_GANACHE_CHAIN_ID_DEC || "1337"), 10), name: "Ganache Local", rpc: [process.env.REACT_APP_GANACHE_RPC || "http://127.0.0.1:7545"] };
+const GANACHE_ALT = { chainId: (process.env.REACT_APP_GANACHE_ALT_CHAIN_ID_HEX || "0x1691"), id: parseInt((process.env.REACT_APP_GANACHE_ALT_CHAIN_ID_DEC || "5777"), 10), name: "Ganache Local 5777", rpc: [process.env.REACT_APP_GANACHE_ALT_RPC || process.env.REACT_APP_GANACHE_RPC || "http://127.0.0.1:7545"] };
 
 export async function ensureLocalChain(provider) {
   const network = await provider.getNetwork();
@@ -102,20 +103,46 @@ export async function getSelectedContractAddress() {
   const provider = getProvider();
   const net = await provider.getNetwork();
   const chainId = Number(net.chainId).toString();
+  // Check local override first
+  const overrideMap = JSON.parse(localStorage.getItem("contractOverrideByChain") || "{}");
+  const overrideAddr = overrideMap[chainId];
+  if (overrideAddr && isAddress(overrideAddr)) {
+    return { address: normalizeAddress(overrideAddr), chainId, source: "override" };
+  }
   const address = (addressesByChain && addressesByChain[chainId]) || singleAddress.MediTrust || null;
-  return { address, chainId };
+  return { address, chainId, source: address ? (addressesByChain && addressesByChain[chainId] ? "mapping" : "single") : "none" };
 }
 
 export const getContract = async (withSigner = true) => {
   const provider = getProvider();
   const net = await provider.getNetwork();
   const chainId = Number(net.chainId).toString();
-  const address = (addressesByChain && addressesByChain[chainId]) || singleAddress.MediTrust;
-  if (!address) throw new Error("Contract address not configured for this network. Please deploy and refresh.");
-  // Verify there is code at the address
-  const code = await provider.getCode(address);
-  if (!code || code === "0x") {
-    throw new Error("Contract not found on the current network. Switch to the network where it was deployed or redeploy.");
+  // Build candidates: override -> mapping -> single
+  const overrideMap = JSON.parse(localStorage.getItem("contractOverrideByChain") || "{}");
+  const overrideAddr = overrideMap[chainId];
+  const mappingAddr = addressesByChain && addressesByChain[chainId];
+  const singleAddr = singleAddress && singleAddress.MediTrust;
+
+  const candidates = [overrideAddr, mappingAddr, singleAddr]
+    .filter(Boolean)
+    .map(a => (isAddress(a) ? normalizeAddress(a) : null))
+    .filter(Boolean);
+
+  if (candidates.length === 0) {
+    throw new Error("Contract address not configured for this network. Please deploy and refresh.");
+  }
+
+  let address = null;
+  for (const a of candidates) {
+    try {
+      const code = await provider.getCode(a);
+      if (code && code !== "0x") { address = a; break; }
+    } catch {}
+  }
+
+  if (!address) {
+    const tried = candidates.join(", ");
+    throw new Error(`Contract not found on the current network (chainId ${chainId}). Tried: ${tried}. Switch to the correct network, clear any bad override, or redeploy.`);
   }
   if (withSigner) {
     const signer = await provider.getSigner();
@@ -124,25 +151,7 @@ export const getContract = async (withSigner = true) => {
   return new ethers.Contract(address, abi, provider);
 };
 
-async function getLocalTxOverrides() {
-  try {
-    const provider = getProvider();
-    const net = await provider.getNetwork();
-    const id = Number(net.chainId);
-    if ([1337, 5777, 31337].includes(id)) {
-      // Force zero gas on local dev chains so MetaMask shows $0.00
-      // IMPORTANT: Don't mix legacy (gasPrice) with EIP-1559 (maxFeePerGas/maxPriorityFeePerGas)
-      const fee = await provider.getFeeData();
-      if (fee && fee.maxFeePerGas != null && fee.maxPriorityFeePerGas != null) {
-        // EIP-1559 mode
-        return { maxFeePerGas: 0n, maxPriorityFeePerGas: 0n };
-      }
-      // Legacy mode
-      return { gasPrice: 0n };
-    }
-  } catch {}
-  return {};
-}
+// removed legacy local tx overrides to avoid fee mode mismatches
 
 export const storeRecord = async (patient, cid, description) => {
   const contract = await getContract(true);
@@ -155,3 +164,49 @@ export const getRecords = async (patient) => {
   const contract = await getContract(false);
   return await contract.getRecords(patient);
 };
+
+// Manual override management for contract addresses per chain (useful when Ganache restarts)
+export function setContractOverride(chainId, address) {
+  if (!isAddress(address)) throw new Error("Invalid 0x address");
+  const map = JSON.parse(localStorage.getItem("contractOverrideByChain") || "{}");
+  map[String(Number(chainId))] = normalizeAddress(address);
+  localStorage.setItem("contractOverrideByChain", JSON.stringify(map));
+}
+
+export function clearContractOverride(chainId) {
+  const map = JSON.parse(localStorage.getItem("contractOverrideByChain") || "{}");
+  const key = String(Number(chainId));
+  if (key in map) {
+    delete map[key];
+    localStorage.setItem("contractOverrideByChain", JSON.stringify(map));
+  }
+}
+
+export async function verifyContractDeployed(address) {
+  const provider = getProvider();
+  if (!isAddress(address)) return false;
+  const code = await provider.getCode(normalizeAddress(address));
+  return !!(code && code !== "0x");
+}
+
+// Diagnose when MetaMask is on chainId 1337 but reports no code, while local RPC has code.
+export async function diagnoseContractMismatch() {
+  const provider = getProvider();
+  const net = await provider.getNetwork();
+  const chainId = Number(net.chainId).toString();
+  const mappingAddr = (addressesByChain && addressesByChain[chainId]) || singleAddress.MediTrust || null;
+  const result = { chainId, address: mappingAddr || null, metaMaskHasCode: false, localRpcHasCode: null, localRpc: "http://127.0.0.1:7545" };
+  if (!mappingAddr || !isAddress(mappingAddr)) return result;
+  try {
+    const metaCode = await provider.getCode(mappingAddr);
+    result.metaMaskHasCode = !!(metaCode && metaCode !== "0x");
+  } catch {}
+  try {
+    const localProvider = new ethers.JsonRpcProvider(result.localRpc);
+    const localCode = await localProvider.getCode(mappingAddr);
+    result.localRpcHasCode = !!(localCode && localCode !== "0x");
+  } catch {
+    result.localRpcHasCode = null;
+  }
+  return result;
+}

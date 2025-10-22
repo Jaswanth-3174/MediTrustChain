@@ -19,10 +19,12 @@
   "scripts": {
     "start": "react-scripts start",
     "ganache": "npx ganache -p 7545 -h 127.0.0.1",
+    "ganache:persist": "npx ganache -p 7545 -h 127.0.0.1 --chain.chainId 1337 --database.dbPath ./ganache-data --wallet.mnemonic \"test test test test test test test test test test test junk\"",
     "chain": "hardhat node",
     "compile": "hardhat compile",
     "deploy:local": "hardhat run scripts/deploy.js --network localhost",
   "deploy:ganache": "hardhat run scripts/deploy.js --network ganache",
+    "ensure:ganache": "node scripts/ensure-local.js",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
