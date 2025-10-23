@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { isAddress } from "ethers";
-import { connectWallet, getRecordsAuthorized, switchToGanache, getSelectedContractAddress, verifyContractDeployed, hasReadAccess, getContract, diagnoseContractMismatch } from "../lib/eth";
+import { isAddress, parseEther } from "ethers";
+import { connectWallet, getRecordsAuthorized, getRecords, switchToGanache, getSelectedContractAddress, verifyContractDeployed, hasReadAccess, getContract, diagnoseContractMismatch, isInsurer, registerInsurer, submitClaim, getClaimsByPatient, updateClaimStatus } from "../lib/eth";
 import { ipfsGatewayUrl } from "../lib/pinata";
 import { decryptBlob } from "../lib/crypto";
 
@@ -10,8 +10,13 @@ export default function InsurerDashboard() {
   const [records, setRecords] = useState([]);
   const [status, setStatus] = useState("");
   const [netInfo, setNetInfo] = useState({ chainId: "?", address: "?", hasCode: false });
+  const [accessMsg, setAccessMsg] = useState("");
   const [mismatch, setMismatch] = useState(null);
   const [passphrase, setPassphrase] = useState("");
+  const [isInsurerRole, setIsInsurerRole] = useState(false);
+  const [claims, setClaims] = useState([]);
+  const [claimAmountEth, setClaimAmountEth] = useState("");
+  const [claimNote, setClaimNote] = useState("");
 
   const refreshNetInfo = async () => {
     try {
@@ -28,7 +33,7 @@ export default function InsurerDashboard() {
   };
 
   useEffect(() => { refreshNetInfo(); }, []);
-
+  
   // Clear UI on account or chain changes to avoid stale records lingering
   useEffect(() => {
     if (!window.ethereum) return;
@@ -110,6 +115,7 @@ export default function InsurerDashboard() {
     try {
       const { account } = await connectWallet();
       setAccount(account);
+      try { setIsInsurerRole(await isInsurer(account)); } catch {}
     } catch (e) {
       setStatus(e.message);
     }
@@ -121,8 +127,13 @@ export default function InsurerDashboard() {
     setStatus("Fetching records...");
     setRecords([]); // clear previous view to avoid showing stale records after revoke
     try {
-      const list = await getRecordsAuthorized(patient);
-      setRecords(list);
+      let list = await getRecordsAuthorized(patient);
+      // If the viewer is the patient and nothing returned, try direct getRecords as a fallback
+      if (list && list.length === 0 && account && patient && account.toLowerCase() === patient.toLowerCase()) {
+        try { list = await getRecords(patient); } catch {}
+      }
+      setRecords(list || []);
+      try { setClaims(await getClaimsByPatient(patient)); } catch {}
       setStatus("");
     } catch (err) {
       setRecords([]);
@@ -184,6 +195,14 @@ export default function InsurerDashboard() {
       )}
 
       <div className="bg-white rounded-lg shadow p-4 space-y-4">
+        <div className="text-xs flex items-center gap-2">
+          <span className={`px-2 py-1 rounded ${isInsurerRole ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+            {isInsurerRole ? 'Registered Insurer' : 'Not registered as Insurer'}
+          </span>
+          {!isInsurerRole && (
+            <button className="px-2 py-1 border rounded" onClick={async() => { try { setStatus('Registering insurer...'); await registerInsurer(); setIsInsurerRole(true); setStatus(''); } catch(e){ setStatus(e.message||String(e)); } }}>Register</button>
+          )}
+        </div>
         {account && patient && account.toLowerCase() === patient.toLowerCase() && (
           <div className="text-xs p-2 rounded bg-yellow-50 border border-yellow-200 text-yellow-800">
             You are connected as the patient address. Access will always be allowed. To test revocation, switch MetaMask to the insurer account.
@@ -192,14 +211,35 @@ export default function InsurerDashboard() {
         <div>
           <label className="block text-sm font-medium">Patient Wallet Address</label>
           <input value={patient} onChange={(e) => setPatient(e.target.value)} placeholder="0x..." className="mt-1 w-full border rounded px-3 py-2" />
+          <div className="mt-2 flex gap-2 items-center text-xs">
+            <button className="px-2 py-1 border rounded" onClick={async()=>{
+              try {
+                if (!patient || !isAddress(patient)) return setAccessMsg("Enter a valid 0x address first.");
+                if (!account) return setAccessMsg("Connect MetaMask as the viewer.");
+                if (patient.toLowerCase() === account.toLowerCase()) { setAccessMsg("You are the patient. Access is allowed."); return; }
+                const ok = await hasReadAccess(patient, account);
+                setAccessMsg(ok ? "Authorized" : "Not authorized (ask patient to grant access)");
+              } catch (e) { setAccessMsg(e.message||String(e)); }
+            }}>Check Access</button>
+            {accessMsg && <span className="text-gray-600">{accessMsg}</span>}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm">Passphrase (if file is encrypted):</label>
           <input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} className="border rounded px-2 py-1" />
         </div>
-        <div className="flex gap-3">
-          <button onClick={fetchForPatient} className="px-4 py-2 bg-gray-900 text-white rounded">Load Records</button>
+        <div className="flex gap-3 flex-wrap">
+          <button onClick={fetchForPatient} disabled={!!(patient && account && patient.toLowerCase()!==account.toLowerCase() && accessMsg && /Not authorized/i.test(accessMsg))} className="px-4 py-2 bg-gray-900 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed">Load Records</button>
+          {account && patient && account.toLowerCase()===patient.toLowerCase() && (
+            <button onClick={async()=>{ try{ setStatus('Fetching my records...'); const list = await getRecords(account); setRecords(list||[]); try{ setClaims(await getClaimsByPatient(account)); }catch{} setStatus(''); } catch(e){ setStatus(e.message||String(e)); } }} className="px-4 py-2 border rounded">Load My Records (Direct)</button>
+          )}
           <button onClick={() => { setRecords([]); setStatus(""); }} className="px-4 py-2 border rounded">Clear</button>
+          <div className="flex items-center gap-2">
+            <label className="text-sm">Claim amount (ETH):</label>
+            <input value={claimAmountEth} onChange={(e)=>setClaimAmountEth(e.target.value)} className="border rounded px-2 py-1 w-32" placeholder="0.1" />
+            <label className="text-sm">Note:</label>
+            <input value={claimNote} onChange={(e)=>setClaimNote(e.target.value)} className="border rounded px-2 py-1 min-w-[180px]" placeholder="Short note" />
+          </div>
         </div>
         {status && <p className="text-sm text-gray-600">{status}</p>}
       </div>
@@ -222,7 +262,57 @@ export default function InsurerDashboard() {
                   <td className="p-2">{r.description}</td>
                   <td className="p-2">{new Date(Number(r.timestamp) * 1000).toLocaleString()}</td>
                   <td className="p-2"><a href={ipfsGatewayUrl(r.cid)} target="_blank" rel="noreferrer" className="text-indigo-600">Open</a></td>
-                  <td className="p-2"><button className="text-xs px-2 py-1 border rounded" onClick={() => onDecrypt(r.cid)}>Download & Decrypt</button></td>
+                  <td className="p-2">
+                    <div className="flex gap-2 flex-wrap">
+                      <button className="text-xs px-2 py-1 border rounded" onClick={() => onDecrypt(r.cid)}>Download & Decrypt</button>
+                      {isInsurerRole && (
+                        <button className="text-xs px-2 py-1 border rounded" onClick={async()=>{
+                          try {
+                            if (!claimAmountEth) return setStatus('Enter claim amount (ETH).');
+                            const amountWei = parseEther(claimAmountEth);
+                            setStatus('Submitting claim...');
+                            await submitClaim(patient, r.cid, amountWei, claimNote || '');
+                            const cs = await getClaimsByPatient(patient);
+                            setClaims(cs);
+                            setStatus('Claim submitted.');
+                          } catch(e){ setStatus(e.message||String(e)); }
+                        }}>Submit Claim</button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {claims.length > 0 && (
+        <div className="mt-6 bg-white p-4 rounded shadow">
+          <h3 className="font-medium mb-2">Claims</h3>
+          <table className="w-full text-sm">
+            <thead><tr className="text-left"><th className="p-2">ID</th><th className="p-2">CID</th><th className="p-2">Amount (ETH)</th><th className="p-2">Status</th><th className="p-2">Note</th><th className="p-2">Actions</th></tr></thead>
+            <tbody>
+              {claims.map((c,i)=> (
+                <tr key={i} className="border-t">
+                  <td className="p-2">{String(c.id)}</td>
+                  <td className="p-2 font-mono text-xs">{c.cid}</td>
+                  <td className="p-2">{Number(c.amount)/1e18}</td>
+                  <td className="p-2">{c.status}</td>
+                  <td className="p-2">{c.note}</td>
+                  <td className="p-2">
+                    {isInsurerRole && (
+                      <div className="flex gap-2 flex-wrap items-center">
+                        <select className="border rounded px-2 py-1" defaultValue={c.status} onChange={async(e)=>{
+                          try { setStatus('Updating claim...'); await updateClaimStatus(c.id, e.target.value, c.note||''); const cs = await getClaimsByPatient(patient); setClaims(cs); setStatus('Claim updated.'); } catch(err){ setStatus(err.message||String(err)); }
+                        }}>
+                          <option>Submitted</option>
+                          <option>Approved</option>
+                          <option>Rejected</option>
+                        </select>
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

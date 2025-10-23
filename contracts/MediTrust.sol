@@ -20,6 +20,109 @@ contract MediTrust {
     event AccessGranted(address indexed patient, address indexed viewer);
     event AccessRevoked(address indexed patient, address indexed viewer);
 
+    // --- Role management (demo-self registration) ---
+    mapping(address => bool) public isPharmacy;
+    mapping(address => bool) public isInsurer;
+    event PharmacyRegistered(address indexed pharmacy);
+    event InsurerRegistered(address indexed insurer);
+
+    function registerPharmacy() external {
+        isPharmacy[msg.sender] = true;
+        emit PharmacyRegistered(msg.sender);
+    }
+
+    function registerInsurer() external {
+        isInsurer[msg.sender] = true;
+        emit InsurerRegistered(msg.sender);
+    }
+
+    modifier onlyPharmacy() {
+        require(isPharmacy[msg.sender], "Not pharmacy");
+        _;
+    }
+
+    modifier onlyInsurer() {
+        require(isInsurer[msg.sender], "Not insurer");
+        _;
+    }
+
+    // --- Pharmacy: dispense logging ---
+    struct Dispense {
+        address pharmacy;
+        address patient;
+        string cid;
+        uint256 timestamp;
+    }
+
+    mapping(address => Dispense[]) private dispensesByPatient; // patient => dispenses
+    event PrescriptionDispensed(address indexed pharmacy, address indexed patient, string cid, uint256 timestamp);
+
+    function dispensePrescription(address patient, string calldata cid) external onlyPharmacy {
+        Dispense memory d = Dispense(msg.sender, patient, cid, block.timestamp);
+        dispensesByPatient[patient].push(d);
+        emit PrescriptionDispensed(msg.sender, patient, cid, block.timestamp);
+    }
+
+    function getDispensesByPatient(address patient) external view returns (Dispense[] memory) {
+        return dispensesByPatient[patient];
+    }
+
+    // --- Insurer: simple claims workflow ---
+    struct Claim {
+        uint256 id;
+        address insurer;
+        address patient;
+        string cid;
+        uint256 amount;
+        string status; // e.g., Submitted, Approved, Rejected
+        string note;
+        uint256 timestamp;
+    }
+
+    Claim[] private claims;
+    event ClaimSubmitted(uint256 indexed id, address indexed insurer, address indexed patient, string cid, uint256 amount, string note, uint256 timestamp);
+    event ClaimUpdated(uint256 indexed id, string status, string note);
+
+    function submitClaim(address patient, string calldata cid, uint256 amount, string calldata note) external onlyInsurer {
+        uint256 id = claims.length;
+        claims.push(Claim({
+            id: id,
+            insurer: msg.sender,
+            patient: patient,
+            cid: cid,
+            amount: amount,
+            status: "Submitted",
+            note: note,
+            timestamp: block.timestamp
+        }));
+        emit ClaimSubmitted(id, msg.sender, patient, cid, amount, note, block.timestamp);
+    }
+
+    function updateClaimStatus(uint256 id, string calldata status, string calldata note) external onlyInsurer {
+        require(id < claims.length, "Invalid claim");
+        Claim storage c = claims[id];
+        require(c.insurer == msg.sender, "Only insurer");
+        c.status = status;
+        c.note = note;
+        emit ClaimUpdated(id, status, note);
+    }
+
+    function getClaimsByPatient(address patient) external view returns (Claim[] memory) {
+        // count
+        uint256 count = 0;
+        for (uint256 i = 0; i < claims.length; i++) {
+            if (claims[i].patient == patient) count++;
+        }
+        Claim[] memory out = new Claim[](count);
+        uint256 idx = 0;
+        for (uint256 i = 0; i < claims.length; i++) {
+            if (claims[i].patient == patient) {
+                out[idx++] = claims[i];
+            }
+        }
+        return out;
+    }
+
     function storeRecord(address _patient, string memory _cid, string memory _desc) public {
         Record memory newRecord = Record(_patient, _cid, _desc, block.timestamp);
         patientRecords[_patient].push(newRecord);

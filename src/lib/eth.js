@@ -259,6 +259,87 @@ export const hasReadAccess = async (patient, viewer) => {
   return await contract.hasReadAccess(patient, viewer);
 };
 
+// --- Roles & Pharmacy/Insurer integrations ---
+export const isPharmacy = async (addr) => {
+  const contract = await getContract(false);
+  return await contract.isPharmacy(addr);
+};
+
+export const isInsurer = async (addr) => {
+  const contract = await getContract(false);
+  return await contract.isInsurer(addr);
+};
+
+export const registerPharmacy = async () => {
+  const contract = await getContract(true);
+  try {
+    const est = await contract.estimateGas.registerPharmacy();
+    const tx = await contract.registerPharmacy({ gasLimit: (est * 3n) / 2n });
+    await tx.wait();
+  } catch {
+    const tx = await contract.registerPharmacy({ gasLimit: 200000n, type: 0 });
+    await tx.wait();
+  }
+};
+
+export const registerInsurer = async () => {
+  const contract = await getContract(true);
+  try {
+    const est = await contract.estimateGas.registerInsurer();
+    const tx = await contract.registerInsurer({ gasLimit: (est * 3n) / 2n });
+    await tx.wait();
+  } catch {
+    const tx = await contract.registerInsurer({ gasLimit: 200000n, type: 0 });
+    await tx.wait();
+  }
+};
+
+export const dispensePrescription = async (patient, cid) => {
+  const contract = await getContract(true);
+  try {
+    const est = await contract.estimateGas.dispensePrescription(patient, cid);
+    const tx = await contract.dispensePrescription(patient, cid, { gasLimit: (est * 3n) / 2n });
+    await tx.wait();
+  } catch {
+    const tx = await contract.dispensePrescription(patient, cid, { gasLimit: 300000n, type: 0 });
+    await tx.wait();
+  }
+};
+
+export const getDispensesByPatient = async (patient) => {
+  const contract = await getContract(false);
+  return await contract.getDispensesByPatient(patient);
+};
+
+export const submitClaim = async (patient, cid, amountWei, note) => {
+  const contract = await getContract(true);
+  try {
+    const est = await contract.estimateGas.submitClaim(patient, cid, amountWei, note);
+    const tx = await contract.submitClaim(patient, cid, amountWei, note, { gasLimit: (est * 3n) / 2n });
+    await tx.wait();
+  } catch {
+    const tx = await contract.submitClaim(patient, cid, amountWei, note, { gasLimit: 400000n, type: 0 });
+    await tx.wait();
+  }
+};
+
+export const updateClaimStatus = async (id, status, note) => {
+  const contract = await getContract(true);
+  try {
+    const est = await contract.estimateGas.updateClaimStatus(id, status, note);
+    const tx = await contract.updateClaimStatus(id, status, note, { gasLimit: (est * 3n) / 2n });
+    await tx.wait();
+  } catch {
+    const tx = await contract.updateClaimStatus(id, status, note, { gasLimit: 300000n, type: 0 });
+    await tx.wait();
+  }
+};
+
+export const getClaimsByPatient = async (patient) => {
+  const contract = await getContract(false);
+  return await contract.getClaimsByPatient(patient);
+};
+
 // Manual override management for contract addresses per chain (useful when Ganache restarts)
 export function setContractOverride(chainId, address) {
   if (!isAddress(address)) throw new Error("Invalid 0x address");
