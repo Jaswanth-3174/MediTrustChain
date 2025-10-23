@@ -23,8 +23,11 @@
     "chain": "hardhat node",
     "compile": "hardhat compile",
     "deploy:local": "hardhat run scripts/deploy.js --network localhost",
-  "deploy:ganache": "hardhat run scripts/deploy.js --network ganache",
+    "deploy:ganache": "hardhat run scripts/deploy.js --network ganache",
     "ensure:ganache": "node scripts/ensure-local.js",
+    "fund:ganache": "node scripts/fund-local.js",
+    "dev:web": "wait-on tcp:127.0.0.1:7545 && node scripts/ensure-local.js && react-scripts start",
+    "dev": "concurrently -k -n GANACHE,WEB -c green,cyan \"npm:ganache:persist\" \"npm:dev:web\"",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
@@ -62,6 +65,7 @@
     "@types/mocha": "^9.1.1",
     "autoprefixer": "^10.4.21",
     "chai": "^4.5.0",
+    "concurrently": "^8.2.2",
     "hardhat": "^2.26.3",
     "hardhat-gas-reporter": "^2.3.0",
     "postcss": "^8.5.6",
@@ -69,6 +73,7 @@
     "tailwindcss": "^3.4.18",
     "ts-node": "^10.9.2",
     "typechain": "^8.3.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "wait-on": "^7.2.0"
   }
 }

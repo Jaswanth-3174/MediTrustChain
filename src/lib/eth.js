@@ -123,7 +123,18 @@ export const getContract = async (withSigner = true) => {
   const mappingAddr = addressesByChain && addressesByChain[chainId];
   const singleAddr = singleAddress && singleAddress.MediTrust;
 
-  const candidates = [overrideAddr, mappingAddr, singleAddr]
+  // If override exists but has no code on current provider, clear it automatically to avoid stale addresses after restarts
+  if (overrideAddr) {
+    try {
+      const code = await provider.getCode(isAddress(overrideAddr) ? normalizeAddress(overrideAddr) : overrideAddr);
+      if (!code || code === "0x") {
+        delete overrideMap[chainId];
+        localStorage.setItem("contractOverrideByChain", JSON.stringify(overrideMap));
+      }
+    } catch {}
+  }
+
+  const candidates = [overrideMap[chainId], mappingAddr, singleAddr]
     .filter(Boolean)
     .map(a => (isAddress(a) ? normalizeAddress(a) : null))
     .filter(Boolean);
@@ -142,6 +153,17 @@ export const getContract = async (withSigner = true) => {
 
   if (!address) {
     const tried = candidates.join(", ");
+    // Diagnose common mismatch: local RPC has code, MetaMask provider reports no code
+    try {
+      const diag = await diagnoseContractMismatch();
+      if (diag && diag.address && diag.localRpcHasCode && !diag.metaMaskHasCode) {
+        throw new Error(
+          `Contract not found via MetaMask provider on chainId ${chainId}. Local RPC ${diag.localRpc} HAS code at ${diag.address}, ` +
+          `but your MetaMask network likely points to a different RPC. Fix: update MetaMask network RPC URL to http://127.0.0.1:7545 (Chain ID 1337), then refresh. ` +
+          `Tried addresses: ${tried}`
+        );
+      }
+    } catch {}
     throw new Error(`Contract not found on the current network (chainId ${chainId}). Tried: ${tried}. Switch to the correct network, clear any bad override, or redeploy.`);
   }
   if (withSigner) {
@@ -163,6 +185,78 @@ export const storeRecord = async (patient, cid, description) => {
 export const getRecords = async (patient) => {
   const contract = await getContract(false);
   return await contract.getRecords(patient);
+};
+
+export const getRecordsAuthorized = async (patient) => {
+  // Must use signer so msg.sender is set correctly for authorization check
+  const contract = await getContract(true);
+  return await contract.getRecordsAuthorized(patient);
+};
+
+export const grantReadAccess = async (viewer) => {
+  const contract = await getContract(true);
+  // Try to estimate gas and add a safety margin; fallback to no overrides, then to a generous cap
+  try {
+    const est = await contract.estimateGas.grantReadAccess(viewer);
+    const margin = (est * 3n) / 2n; // 1.5x
+    const gasLimit = margin < 100000n ? 100000n : margin; // ensure reasonable floor
+    const tx = await contract.grantReadAccess(viewer, { gasLimit });
+    await tx.wait();
+    return;
+  } catch (e) {
+    // continue to retry paths below
+  }
+  // Retry without any overrides to let the wallet/provider decide
+  try {
+    const tx = await contract.grantReadAccess(viewer);
+    await tx.wait();
+    return;
+  } catch (e2) {
+    // continue to final fallback
+  }
+  // Final fallback with a high gas limit
+  try {
+    const tx = await contract.grantReadAccess(viewer, { gasLimit: 500000n, type: 0 });
+    await tx.wait();
+    return;
+  } catch (e3) {
+    const errMsg = (e3?.shortMessage || e3?.message || String(e3));
+    throw new Error(`Grant access failed: ${errMsg}. Tips: ensure your MetaMask is on Ganache (http://127.0.0.1:7545, chainId 1337), the contract address matches this chain, and your account has test ETH.`);
+  }
+};
+
+export const revokeReadAccess = async (viewer) => {
+  const contract = await getContract(true);
+  try {
+    const est = await contract.estimateGas.revokeReadAccess(viewer);
+    const margin = (est * 3n) / 2n; // 1.5x
+    const gasLimit = margin < 100000n ? 100000n : margin;
+    const tx = await contract.revokeReadAccess(viewer, { gasLimit });
+    await tx.wait();
+    return;
+  } catch (e) {
+    // continue to retry paths below
+  }
+  try {
+    const tx = await contract.revokeReadAccess(viewer);
+    await tx.wait();
+    return;
+  } catch (e2) {
+    // continue to final fallback
+  }
+  try {
+    const tx = await contract.revokeReadAccess(viewer, { gasLimit: 500000n, type: 0 });
+    await tx.wait();
+    return;
+  } catch (e3) {
+    const errMsg = (e3?.shortMessage || e3?.message || String(e3));
+    throw new Error(`Revoke access failed: ${errMsg}. Tips: ensure your MetaMask is on Ganache (http://127.0.0.1:7545, chainId 1337), the contract address matches this chain, and your account has test ETH.`);
+  }
+};
+
+export const hasReadAccess = async (patient, viewer) => {
+  const contract = await getContract(false);
+  return await contract.hasReadAccess(patient, viewer);
 };
 
 // Manual override management for contract addresses per chain (useful when Ganache restarts)

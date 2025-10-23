@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { connectWallet, getRecords } from "../lib/eth";
+import { isAddress } from "ethers";
+import { connectWallet, getRecordsAuthorized, grantReadAccess, revokeReadAccess, hasReadAccess } from "../lib/eth";
 import { cacheGet, cacheSet } from "../lib/cache";
 import { ipfsGatewayUrl } from "../lib/pinata";
 
@@ -7,6 +8,8 @@ export default function PatientDashboard() {
   const [account, setAccount] = useState("");
   const [records, setRecords] = useState([]);
   const [status, setStatus] = useState("");
+  const [shareAddr, setShareAddr] = useState("");
+  const [shareStatus, setShareStatus] = useState("");
 
   const onConnect = async () => {
     try {
@@ -57,7 +60,7 @@ export default function PatientDashboard() {
     (async () => {
       setStatus("Fetching records from blockchain...");
       try {
-        const list = await getRecords(account);
+        const list = await getRecordsAuthorized(account);
         setRecords(list);
         cacheSet(account, list);
         setStatus("");
@@ -90,7 +93,7 @@ export default function PatientDashboard() {
               setStatus("Refreshing records...");
               (async () => {
                 try {
-                  const list = await getRecords(account);
+                  const list = await getRecordsAuthorized(account);
                   setRecords(list);
                   cacheSet(account, list);
                   setStatus("");
@@ -123,6 +126,48 @@ export default function PatientDashboard() {
             </tbody>
           </table>
         )}
+      </div>
+
+      <div className="mt-6 bg-white rounded-lg shadow p-4">
+        <h3 className="font-medium mb-2">Share Access</h3>
+        <div className="flex items-center gap-2 flex-wrap">
+          <input value={shareAddr} onChange={(e) => setShareAddr(e.target.value)} placeholder="Insurer/Pharmacy 0x... address" className="border rounded px-3 py-2 min-w-[320px]" />
+          <button className="px-3 py-2 border rounded" onClick={async () => {
+            if (!shareAddr) return setShareStatus("Enter an address");
+            if (!isAddress(shareAddr)) return setShareStatus("Invalid address. Please enter a valid 0x address.");
+            try {
+              setShareStatus("Granting access...");
+              await grantReadAccess(shareAddr);
+              // verify on-chain state
+              const ok = await hasReadAccess(account, shareAddr);
+              setShareStatus(ok ? "Access granted." : "Granted, but could not verify immediately. Try Check.");
+            } catch (e) {
+              setShareStatus(e.message || String(e));
+            }
+          }}>Grant</button>
+          <button className="px-3 py-2 border rounded" onClick={async () => {
+            if (!shareAddr) return setShareStatus("Enter an address");
+            if (!isAddress(shareAddr)) return setShareStatus("Invalid address. Please enter a valid 0x address.");
+            try {
+              setShareStatus("Revoking access...");
+              await revokeReadAccess(shareAddr);
+              setShareStatus("Access revoked.");
+            } catch (e) {
+              setShareStatus(e.message || String(e));
+            }
+          }}>Revoke</button>
+          <button className="px-3 py-2 border rounded" onClick={async () => {
+            if (!shareAddr) return setShareStatus("Enter an address");
+            if (!isAddress(shareAddr)) return setShareStatus("Invalid address. Please enter a valid 0x address.");
+            try {
+              const ok = await hasReadAccess(account, shareAddr);
+              setShareStatus(ok ? "Has access" : "No access");
+            } catch (e) {
+              setShareStatus(e.message || String(e));
+            }
+          }}>Check</button>
+        </div>
+        {shareStatus && <p className="text-sm text-gray-600 mt-2">{shareStatus}</p>}
       </div>
     </div>
   );
