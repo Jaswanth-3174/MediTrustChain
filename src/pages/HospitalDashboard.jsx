@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { getAddress, isAddress } from "ethers";
-import { connectWallet, storeRecord, getSelectedContractAddress, switchToGanache, setContractOverride, clearContractOverride, verifyContractDeployed, diagnoseContractMismatch, pingLocalRpc } from "../lib/eth";
+import { connectWallet, storeRecord, storeRecordCategorized, getSelectedContractAddress, switchToGanache, setContractOverride, clearContractOverride, verifyContractDeployed, diagnoseContractMismatch, pingLocalRpc } from "../lib/eth";
 import { uploadToPinata, ipfsGatewayUrl, testPinataAuth } from "../lib/pinata";
 import { encryptFile } from "../lib/crypto";
 
@@ -13,6 +13,7 @@ export default function HospitalDashboard() {
   const [recent, setRecent] = useState([]);
   const [useEncryption, setUseEncryption] = useState(false);
   const [passphrase, setPassphrase] = useState("");
+  const [category, setCategory] = useState("General");
   const [netInfo, setNetInfo] = useState({ chainId: "?", address: "?", source: "?", hasCode: false });
   const [overrideInput, setOverrideInput] = useState("");
   const [mismatch, setMismatch] = useState(null);
@@ -90,16 +91,21 @@ export default function HospitalDashboard() {
       const cid = await uploadToPinata(toUpload, { name: desc || file.name });
       setStatus(`Stored on IPFS: ${cid}. Writing to blockchain...`);
       try {
-        await storeRecord(patientAddr, cid, desc || "");
+        if (category && category !== "General") {
+          await storeRecordCategorized(patientAddr, cid, desc || "", category);
+        } else {
+          await storeRecord(patientAddr, cid, desc || "");
+        }
       } catch (chainErr) {
         const msg = chainErr?.message || String(chainErr);
         setStatus(`Store on chain failed: ${msg}`);
         return;
       }
       setStatus("Record stored on blockchain.");
-      setRecent((r) => [{ cid, desc, when: new Date().toISOString() }, ...r]);
+      setRecent((r) => [{ cid, desc, category, when: new Date().toISOString() }, ...r]);
       setDesc("");
       setFile(null);
+      setCategory("General");
     } catch (err) {
       const msg = err?.message || String(err);
       setStatus(`IPFS upload failed: ${msg}`);
@@ -180,6 +186,18 @@ export default function HospitalDashboard() {
           <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="X-Ray Report" className="mt-1 w-full border rounded px-3 py-2" />
         </div>
         <div>
+          <label className="block text-sm font-medium">Category</label>
+          <select value={category} onChange={(e)=>setCategory(e.target.value)} className="mt-1 w-full border rounded px-3 py-2">
+            <option>General</option>
+            <option>Prescription</option>
+            <option>Billing</option>
+            <option>Lab</option>
+            <option>Imaging</option>
+            <option>Note</option>
+          </select>
+          <p className="text-xs text-gray-500 mt-1">Pharmacies see only Prescription; insurers see only Billing.</p>
+        </div>
+        <div>
           <label className="block text-sm font-medium">File</label>
           <input type="file" onChange={(e) => setFile(e.target.files[0])} className="mt-1 w-full" />
         </div>
@@ -209,6 +227,7 @@ export default function HospitalDashboard() {
               <tr className="text-left">
                 <th className="p-2">CID</th>
                 <th className="p-2">Description</th>
+                <th className="p-2">Category</th>
                 <th className="p-2">When</th>
                 <th className="p-2">Link</th>
               </tr>
@@ -218,6 +237,7 @@ export default function HospitalDashboard() {
                 <tr key={i} className="border-t">
                   <td className="p-2 font-mono text-xs">{r.cid}</td>
                   <td className="p-2">{r.desc}</td>
+                  <td className="p-2">{r.category || 'General'}</td>
                   <td className="p-2">{new Date(r.when).toLocaleString()}</td>
                   <td className="p-2"><a className="text-indigo-600" href={ipfsGatewayUrl(r.cid)} target="_blank" rel="noreferrer">View</a></td>
                 </tr>

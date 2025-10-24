@@ -6,6 +6,7 @@ contract MediTrust {
         address patient;
         string cid;
         string description;
+        string category; // e.g., "General", "Prescription", "Billing", "Lab", etc.
         uint256 timestamp;
     }
 
@@ -16,7 +17,7 @@ contract MediTrust {
     // patient => viewer => read allowed
     mapping(address => mapping(address => bool)) private readAccess;
 
-    event RecordStored(address indexed patient, string cid, string description, uint256 timestamp);
+    event RecordStored(address indexed patient, string cid, string description, string category, uint256 timestamp);
     event AccessGranted(address indexed patient, address indexed viewer);
     event AccessRevoked(address indexed patient, address indexed viewer);
 
@@ -124,10 +125,18 @@ contract MediTrust {
     }
 
     function storeRecord(address _patient, string memory _cid, string memory _desc) public {
-        Record memory newRecord = Record(_patient, _cid, _desc, block.timestamp);
+        // Backwards compatibility: default to category "General"
+        Record memory newRecord = Record(_patient, _cid, _desc, "General", block.timestamp);
         patientRecords[_patient].push(newRecord);
         records.push(newRecord);
-        emit RecordStored(_patient, _cid, _desc, block.timestamp);
+        emit RecordStored(_patient, _cid, _desc, "General", block.timestamp);
+    }
+
+    function storeRecordCategorized(address _patient, string memory _cid, string memory _desc, string memory _category) public {
+        Record memory newRecord = Record(_patient, _cid, _desc, _category, block.timestamp);
+        patientRecords[_patient].push(newRecord);
+        records.push(newRecord);
+        emit RecordStored(_patient, _cid, _desc, _category, block.timestamp);
     }
 
     // Backwards compatible getter (no checks). UI should prefer getRecordsAuthorized for privacy.
@@ -155,6 +164,38 @@ contract MediTrust {
             msg.sender == patient || hasReadAccess(patient, msg.sender),
             "Not authorized"
         );
-        return patientRecords[patient];
+        Record[] storage allRecs = patientRecords[patient];
+        // Patient sees all
+        if (msg.sender == patient) {
+            return allRecs;
+        }
+        // Role-based least-privilege views
+        if (isPharmacy[msg.sender]) {
+            return _filterByCategory(allRecs, "Prescription");
+        }
+        if (isInsurer[msg.sender]) {
+            return _filterByCategory(allRecs, "Billing");
+        }
+        // Other authorized viewers (e.g., hospital) get full set
+        return allRecs;
+    }
+
+    function _filterByCategory(Record[] storage src, string memory category) internal view returns (Record[] memory) {
+        uint256 count = 0;
+        for (uint256 i = 0; i < src.length; i++) {
+            if (_equals(src[i].category, category)) count++;
+        }
+        Record[] memory out = new Record[](count);
+        uint256 idx = 0;
+        for (uint256 i = 0; i < src.length; i++) {
+            if (_equals(src[i].category, category)) {
+                out[idx++] = src[i];
+            }
+        }
+        return out;
+    }
+
+    function _equals(string memory a, string memory b) internal pure returns (bool) {
+        return keccak256(abi.encodePacked(a)) == keccak256(abi.encodePacked(b));
     }
 }

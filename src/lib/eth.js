@@ -182,6 +182,12 @@ export const storeRecord = async (patient, cid, description) => {
   await tx.wait();
 };
 
+export const storeRecordCategorized = async (patient, cid, description, category) => {
+  const contract = await getContract(true);
+  const tx = await contract.storeRecordCategorized(patient, cid, description, category);
+  await tx.wait();
+};
+
 export const getRecords = async (patient) => {
   const contract = await getContract(false);
   return await contract.getRecords(patient);

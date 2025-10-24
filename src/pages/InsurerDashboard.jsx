@@ -96,8 +96,27 @@ export default function InsurerDashboard() {
             setStatus("Not authorized by the patient to view records.");
           }
         };
+        const onRecordStored = (p) => {
+          if (!active || !patient) return;
+          if (p?.toLowerCase?.() === patient.toLowerCase()) {
+            fetchForPatient();
+          }
+        };
+        const onClaimSubmitted = (_id, _insurer, pAddr) => {
+          if (!active || !patient) return;
+          if (pAddr?.toLowerCase?.() === patient.toLowerCase()) {
+            (async () => { try { const cs = await getClaimsByPatient(patient); if (!active) return; setClaims(cs); } catch {} })();
+          }
+        };
+        const onClaimUpdated = (_id) => {
+          if (!active || !patient) return;
+          (async () => { try { const cs = await getClaimsByPatient(patient); if (!active) return; setClaims(cs); } catch {} })();
+        };
         contract.on("AccessGranted", onGranted);
         contract.on("AccessRevoked", onRevoked);
+        contract.on("RecordStored", onRecordStored);
+        contract.on("ClaimSubmitted", onClaimSubmitted);
+        contract.on("ClaimUpdated", onClaimUpdated);
       } catch {}
     })();
     return () => {
@@ -106,6 +125,9 @@ export default function InsurerDashboard() {
         if (contract) {
           contract.removeAllListeners?.("AccessGranted");
           contract.removeAllListeners?.("AccessRevoked");
+          contract.removeAllListeners?.("RecordStored");
+          contract.removeAllListeners?.("ClaimSubmitted");
+          contract.removeAllListeners?.("ClaimUpdated");
         }
       } catch {}
     };
@@ -247,6 +269,9 @@ export default function InsurerDashboard() {
       {records.length > 0 && (
         <div className="mt-6 bg-white p-4 rounded shadow">
           <h3 className="font-medium mb-2">Patient Records</h3>
+          {account && patient && account.toLowerCase()!==patient.toLowerCase() && (
+            <p className="text-xs text-gray-600 mb-2">As an insurer, you are viewing billing records only.</p>
+          )}
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left">

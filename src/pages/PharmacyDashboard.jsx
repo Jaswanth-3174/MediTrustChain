@@ -91,8 +91,24 @@ export default function PharmacyDashboard() {
             setStatus("Not authorized by the patient to view records.");
           }
         };
+        const onRecordStored = (p) => {
+          if (!active || !patient) return;
+          if (p?.toLowerCase?.() === patient.toLowerCase()) {
+            // New data available; re-fetch (role-based filter happens in contract)
+            fetchForPatient();
+          }
+        };
+        const onPrescriptionDispensed = (_pharmacy, pAddr) => {
+          if (!active || !patient) return;
+          if (pAddr?.toLowerCase?.() === patient.toLowerCase()) {
+            // Refresh dispense history live
+            (async () => { try { const d = await getDispensesByPatient(patient); if (!active) return; setDispenses(d); } catch {} })();
+          }
+        };
         contract.on("AccessGranted", onGranted);
         contract.on("AccessRevoked", onRevoked);
+        contract.on("RecordStored", onRecordStored);
+        contract.on("PrescriptionDispensed", onPrescriptionDispensed);
       } catch {}
     })();
     return () => {
@@ -101,6 +117,8 @@ export default function PharmacyDashboard() {
         if (contract) {
           contract.removeAllListeners?.("AccessGranted");
           contract.removeAllListeners?.("AccessRevoked");
+          contract.removeAllListeners?.("RecordStored");
+          contract.removeAllListeners?.("PrescriptionDispensed");
         }
       } catch {}
     };
@@ -236,9 +254,12 @@ export default function PharmacyDashboard() {
       </div>
 
       {records.length > 0 && (
-        <div className="mt-6 bg-white p-4 rounded shadow">
+        <div className="mt-6 bg-white p-4 rounded shadow overflow-x-auto">
           <h3 className="font-medium mb-2">Patient Records</h3>
-          <table className="w-full text-sm">
+          {account && patient && account.toLowerCase()!==patient.toLowerCase() && (
+            <p className="text-xs text-gray-600 mb-2">As a pharmacy, you are viewing prescription records only.</p>
+          )}
+          <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="text-left">
                 <th className="p-2">Description</th>
@@ -250,9 +271,9 @@ export default function PharmacyDashboard() {
             <tbody>
               {records.map((r, i) => (
                 <tr key={i} className="border-t">
-                  <td className="p-2">{r.description}</td>
+                  <td className="p-2 whitespace-normal break-words max-w-[320px]">{r.description}</td>
                   <td className="p-2">{new Date(Number(r.timestamp) * 1000).toLocaleString()}</td>
-                  <td className="p-2"><a href={ipfsGatewayUrl(r.cid)} target="_blank" rel="noreferrer" className="text-indigo-600">Open</a></td>
+                  <td className="p-2"><a href={ipfsGatewayUrl(r.cid)} target="_blank" rel="noreferrer" className="text-indigo-600 text-xs break-all">Open</a></td>
                   <td className="p-2"><div className="flex gap-2 flex-wrap">
                     <button className="text-xs px-2 py-1 border rounded" onClick={() => onDecrypt(r.cid)}>Download & Decrypt</button>
                     {isPharmRole && (
@@ -267,15 +288,15 @@ export default function PharmacyDashboard() {
       )}
 
       {dispenses.length > 0 && (
-        <div className="mt-6 bg-white p-4 rounded shadow">
+        <div className="mt-6 bg-white p-4 rounded shadow overflow-x-auto">
           <h3 className="font-medium mb-2">Dispense History</h3>
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[640px]">
             <thead><tr className="text-left"><th className="p-2">CID</th><th className="p-2">Pharmacy</th><th className="p-2">Date</th></tr></thead>
             <tbody>
               {dispenses.map((d,i)=>(
                 <tr key={i} className="border-t">
-                  <td className="p-2 font-mono text-xs">{d.cid}</td>
-                  <td className="p-2">{d.pharmacy}</td>
+                  <td className="p-2 font-mono text-xs break-all max-w-[360px]">{d.cid}</td>
+                  <td className="p-2 text-xs break-all max-w-[280px]">{d.pharmacy}</td>
                   <td className="p-2">{new Date(Number(d.timestamp)*1000).toLocaleString()}</td>
                 </tr>
               ))}

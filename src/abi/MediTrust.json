@@ -191,6 +191,12 @@
       },
       {
         "indexed": false,
+        "internalType": "string",
+        "name": "category",
+        "type": "string"
+      },
+      {
+        "indexed": false,
         "internalType": "uint256",
         "name": "timestamp",
         "type": "uint256"
@@ -347,6 +353,11 @@
             "type": "string"
           },
           {
+            "internalType": "string",
+            "name": "category",
+            "type": "string"
+          },
+          {
             "internalType": "uint256",
             "name": "timestamp",
             "type": "uint256"
@@ -385,6 +396,11 @@
           {
             "internalType": "string",
             "name": "description",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "category",
             "type": "string"
           },
           {
@@ -522,6 +538,34 @@
       }
     ],
     "name": "storeRecord",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_patient",
+        "type": "address"
+      },
+      {
+        "internalType": "string",
+        "name": "_cid",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "_desc",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "_category",
+        "type": "string"
+      }
+    ],
+    "name": "storeRecordCategorized",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
