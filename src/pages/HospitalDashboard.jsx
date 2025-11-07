@@ -113,31 +113,61 @@ export default function HospitalDashboard() {
   };
 
   return (
-    <div className="min-h-screen p-6 max-w-3xl mx-auto">
-      <header className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-semibold">Hospital Dashboard</h2>
-        <button onClick={onConnect} className="px-4 py-2 bg-indigo-600 text-white rounded">
-          {account ? account.slice(0, 6) + "..." + account.slice(-4) : "Connect MetaMask"}
-        </button>
-      </header>
-
-      <form onSubmit={onSubmit} className="bg-white rounded-lg shadow p-4 space-y-4">
-        <div className="text-xs text-gray-600 flex items-center justify-between gap-3 flex-wrap">
+    <div className="min-h-screen px-4 py-8">
+      <div className="max-w-7xl mx-auto">
+      {/* Modern Header with gradient accent */}
+      <header className="mb-8">
+        <div className="flex justify-between items-center mb-2">
           <div>
-            ChainId: <span className="font-mono">{netInfo.chainId}</span> · Contract: <span className="font-mono">{netInfo.address}</span>
-            <span className={`ml-2 ${netInfo.hasCode ? "text-green-700" : "text-red-700"}`}>[{netInfo.hasCode ? "code found" : "no code"}]</span>
-            {netInfo.source && <span className="ml-2 text-gray-500">({netInfo.source})</span>}
+            <h2 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+              Hospital Dashboard
+            </h2>
+            <p className="text-gray-600 mt-2">Upload and manage patient medical records securely</p>
           </div>
-          <div className="flex gap-2">
-            <button type="button" className="px-2 py-1 border rounded" onClick={refreshNetInfo}>Refresh</button>
-            <button type="button" className="px-2 py-1 border rounded" onClick={async () => { try { await switchToGanache(); await refreshNetInfo(); } catch (e) { setStatus(e.message || String(e)); } }}>Switch to Ganache</button>
+          <button 
+            onClick={onConnect} 
+            className="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 text-white shadow-lg shadow-indigo-500/30 font-semibold"
+          >
+            {account ? account.slice(0, 6) + "..." + account.slice(-4) : "Connect MetaMask"}
+          </button>
+        </div>
+      </header>
+      
+      <form onSubmit={onSubmit} className="rounded-2xl border border-gray-200 bg-white shadow-xl p-6 md:p-8 space-y-6">
+        {/* Network Info Card */}
+        <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-4 border border-gray-200">
+          <div className="text-sm text-gray-700 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500">Chain ID:</span>
+                <span className="font-mono font-semibold text-gray-900">{netInfo.chainId}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500">Contract:</span>
+                <span className="font-mono font-semibold text-gray-900 text-xs">{netInfo.address}</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${netInfo.hasCode ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                  {netInfo.hasCode ? "✓ Active" : "✗ No Code"}
+                </span>
+              </div>
+              {netInfo.source && <span className="text-xs text-gray-500">({netInfo.source})</span>}
+            </div>
+            <div className="flex gap-2">
+              <button type="button" className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium" onClick={refreshNetInfo}>
+                Refresh
+              </button>
+              <button type="button" className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium" onClick={async () => { try { await switchToGanache(); await refreshNetInfo(); } catch (e) { setStatus(e.message || String(e)); } }}>
+                Switch to Ganache
+              </button>
+            </div>
           </div>
         </div>
-        <div className="bg-gray-50 border rounded p-2 text-xs">
-          <div className="font-medium mb-1">Contract address override (use if Ganache restarted)</div>
+        
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm">
+          <div className="font-semibold mb-2 text-gray-800">Contract Address Override</div>
+          <p className="text-xs text-gray-600 mb-3">Use this if Ganache restarted with a new contract address</p>
           <div className="flex gap-2 items-center flex-wrap">
-            <input value={overrideInput} onChange={(e) => setOverrideInput(e.target.value)} placeholder="0x... custom address" className="border rounded px-2 py-1 text-sm min-w-[280px]" />
-            <button type="button" className="px-2 py-1 border rounded" onClick={async () => {
+            <input value={overrideInput} onChange={(e) => setOverrideInput(e.target.value)} placeholder="0x... custom address" className="border border-gray-300 rounded-lg px-3 py-2 text-sm min-w-[280px] bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+            <button type="button" className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium" onClick={async () => {
               try {
                 if (!netInfo.chainId || netInfo.chainId === "?") throw new Error("Unknown chainId");
                 await setContractOverride(netInfo.chainId, overrideInput);
@@ -147,7 +177,7 @@ export default function HospitalDashboard() {
                 setStatus(e.message || String(e));
               }
             }}>Set Override</button>
-            <button type="button" className="px-2 py-1 border rounded" onClick={async () => {
+            <button type="button" className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium" onClick={async () => {
               try {
                 if (!netInfo.chainId || netInfo.chainId === "?") throw new Error("Unknown chainId");
                 await clearContractOverride(netInfo.chainId);
@@ -161,91 +191,177 @@ export default function HospitalDashboard() {
         </div>
 
         {mismatch && mismatch.address && mismatch.metaMaskHasCode === false && mismatch.localRpcHasCode === true && (
-          <div className="bg-yellow-50 border border-yellow-300 rounded p-3 text-xs">
-            <div className="font-medium text-yellow-800 mb-1">Network mismatch detected</div>
-            <p className="text-yellow-800">
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg p-4 text-sm">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-2xl">⚠️</span>
+              <div className="font-semibold text-yellow-900">Network Mismatch Detected</div>
+            </div>
+            <p className="text-yellow-800 mb-3">
               Your MetaMask is on chain {mismatch.chainId} but reports no code at {mismatch.address}. The local RPC {mismatch.localRpc} has code at this address.
               This usually means your MetaMask Ganache network is pointing to a different RPC URL.
             </p>
-            <ul className="list-disc ml-5 mt-1 text-yellow-800">
+            <ul className="list-disc ml-5 mt-2 text-yellow-800 space-y-1">
               <li>Open MetaMask → Networks → select your Ganache network.</li>
               <li>Set RPC URL to <span className="font-mono">{mismatch.localRpc}</span> and Chain ID to 1337.</li>
               <li>Back here, click “Switch to Ganache” and then “Refresh”.</li>
             </ul>
           </div>
         )}
-        <div>
-          <label className="block text-sm font-medium">Patient Wallet Address</label>
-          <input value={patient} onChange={(e) => setPatient(e.target.value)} placeholder="0x..." className="mt-1 w-full border rounded px-3 py-2" />
-          <div className="mt-1">
-            <button type="button" className="text-xs text-indigo-600 underline" onClick={() => account && setPatient(account)}>Use my connected address</button>
+        
+        {/* Form Fields with modern styling */}
+        <div className="grid md:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Patient Wallet Address</label>
+            <input 
+              value={patient} 
+              onChange={(e) => setPatient(e.target.value)} 
+              placeholder="0x..." 
+              className="w-full border border-gray-300 rounded-lg px-4 py-3 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow" 
+            />
+            <div className="mt-2">
+              <button type="button" className="text-sm text-indigo-600 hover:text-indigo-800 underline font-medium" onClick={() => account && setPatient(account)}>
+                Use my connected address
+              </button>
+            </div>
           </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium">Description</label>
-          <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="X-Ray Report" className="mt-1 w-full border rounded px-3 py-2" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium">Category</label>
-          <select value={category} onChange={(e)=>setCategory(e.target.value)} className="mt-1 w-full border rounded px-3 py-2">
+          
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Category</label>
+            <select 
+              value={category} 
+              onChange={(e)=>setCategory(e.target.value)} 
+              className="w-full border border-gray-300 rounded-lg px-4 py-3 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow"
+            >
             <option>General</option>
             <option>Prescription</option>
             <option>Billing</option>
             <option>Lab</option>
             <option>Imaging</option>
             <option>Note</option>
-          </select>
-          <p className="text-xs text-gray-500 mt-1">Pharmacies see only Prescription; insurers see only Billing.</p>
+            </select>
+            <p className="text-xs text-gray-500 mt-2">Pharmacies see only Prescription; insurers see only Billing.</p>
+          </div>
         </div>
+        
         <div>
-          <label className="block text-sm font-medium">File</label>
-          <input type="file" onChange={(e) => setFile(e.target.files[0])} className="mt-1 w-full" />
+          <label className="block text-sm font-semibold text-gray-700 mb-2">Description</label>
+          <input 
+            value={desc} 
+            onChange={(e) => setDesc(e.target.value)} 
+            placeholder="X-Ray Report" 
+            className="w-full border border-gray-300 rounded-lg px-4 py-3 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow" 
+          />
         </div>
-        <div className="flex items-center gap-2">
-          <input id="encrypt" type="checkbox" checked={useEncryption} onChange={(e) => setUseEncryption(e.target.checked)} />
-          <label htmlFor="encrypt" className="text-sm">Encrypt file in browser before upload (AES-GCM)</label>
+        
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-2">File</label>
+          <input 
+            type="file" 
+            onChange={(e) => setFile(e.target.files[0])} 
+            className="w-full border border-gray-300 rounded-lg px-4 py-3 bg-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer" 
+          />
         </div>
-        {useEncryption && (
-          <div>
-            <label className="block text-sm font-medium">Passphrase</label>
-            <input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} className="mt-1 w-full border rounded px-3 py-2" />
-            <p className="text-xs text-gray-500 mt-1">Keep this passphrase safe; it's required to decrypt the file.</p>
+        
+        <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+          <div className="flex items-center gap-3">
+            <input 
+              id="encrypt" 
+              type="checkbox" 
+              checked={useEncryption} 
+              onChange={(e) => setUseEncryption(e.target.checked)} 
+              className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+            />
+            <label htmlFor="encrypt" className="text-sm font-medium text-gray-700">
+              Encrypt file in browser before upload (AES-GCM)
+            </label>
+          </div>
+          
+          {useEncryption && (
+            <div className="mt-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Passphrase</label>
+              <input 
+                type="password" 
+                value={passphrase} 
+                onChange={(e) => setPassphrase(e.target.value)} 
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow" 
+                placeholder="Enter a secure passphrase"
+              />
+              <p className="text-xs text-gray-500 mt-2">⚠️ Keep this passphrase safe; it's required to decrypt the file.</p>
+            </div>
+          )}
+        </div>
+        
+        <div className="flex gap-4 pt-4">
+          <button 
+            type="submit" 
+            className="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 text-white font-semibold shadow-lg shadow-indigo-500/30 flex-1 md:flex-none"
+          >
+            Upload & Store
+          </button>
+          <button 
+            type="button" 
+            onClick={onTestPinata} 
+            className="px-6 py-3 border-2 border-gray-300 rounded-xl hover:bg-gray-50 transition-colors font-semibold"
+          >
+            Test Pinata Auth
+          </button>
+        </div>
+        
+        {status && (
+          <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-lg">
+            <p className="text-sm text-blue-800 font-medium">{status}</p>
           </div>
         )}
-        <div className="flex gap-3">
-          <button type="submit" className="px-4 py-2 bg-gray-900 text-white rounded">Upload & Store</button>
-          <button type="button" onClick={onTestPinata} className="px-4 py-2 border rounded">Test Pinata Auth</button>
-        </div>
-        {status && <p className="text-sm text-gray-600">{status}</p>}
       </form>
 
       {recent.length > 0 && (
-        <div className="mt-6 bg-white p-4 rounded shadow">
-          <h3 className="font-medium mb-2">Recent uploads</h3>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left">
-                <th className="p-2">CID</th>
-                <th className="p-2">Description</th>
-                <th className="p-2">Category</th>
-                <th className="p-2">When</th>
-                <th className="p-2">Link</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recent.map((r, i) => (
-                <tr key={i} className="border-t">
-                  <td className="p-2 font-mono text-xs">{r.cid}</td>
-                  <td className="p-2">{r.desc}</td>
-                  <td className="p-2">{r.category || 'General'}</td>
-                  <td className="p-2">{new Date(r.when).toLocaleString()}</td>
-                  <td className="p-2"><a className="text-indigo-600" href={ipfsGatewayUrl(r.cid)} target="_blank" rel="noreferrer">View</a></td>
+        <div className="mt-8 rounded-2xl bg-white border border-gray-200 shadow-xl overflow-hidden">
+          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4">
+            <h3 className="text-xl font-bold text-white">Recent Uploads</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[720px]">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr className="text-left">
+                  <th className="px-6 py-4 font-semibold text-gray-700">CID</th>
+                  <th className="px-6 py-4 font-semibold text-gray-700">Description</th>
+                  <th className="px-6 py-4 font-semibold text-gray-700">Category</th>
+                  <th className="px-6 py-4 font-semibold text-gray-700">Timestamp</th>
+                  <th className="px-6 py-4 font-semibold text-gray-700">Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {recent.map((r, i) => (
+                  <tr key={i} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 font-mono text-xs break-all max-w-[360px] text-gray-600">{r.cid}</td>
+                    <td className="px-6 py-4 whitespace-normal break-words max-w-[320px] text-gray-800">{r.desc}</td>
+                    <td className="px-6 py-4">
+                      <span className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs font-medium">
+                        {r.category || 'General'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-gray-600">{new Date(r.when).toLocaleString()}</td>
+                    <td className="px-6 py-4">
+                      <a 
+                        className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 transition-colors text-sm font-medium" 
+                        href={ipfsGatewayUrl(r.cid)} 
+                        target="_blank" 
+                        rel="noreferrer"
+                      >
+                        View
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
