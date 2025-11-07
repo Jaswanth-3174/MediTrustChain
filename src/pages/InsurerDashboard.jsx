@@ -149,11 +149,17 @@ export default function InsurerDashboard() {
     setStatus("Fetching records...");
     setRecords([]); // clear previous view to avoid showing stale records after revoke
     try {
-      let list = await getRecordsAuthorized(patient);
-      // If the viewer is the patient and nothing returned, try direct getRecords as a fallback
-      if (list && list.length === 0 && account && patient && account.toLowerCase() === patient.toLowerCase()) {
-        try { list = await getRecords(patient); } catch {}
+      // Check if authorized first
+      const authorized = patient.toLowerCase() === account.toLowerCase() || await hasReadAccess(patient, account);
+      
+      if (!authorized) {
+        setStatus("Not authorized by the patient to view records.");
+        setRecords([]);
+        return;
       }
+      
+      // Use getRecords to fetch ALL records (not filtered by category)
+      let list = await getRecords(patient);
       setRecords(list || []);
       try { setClaims(await getClaimsByPatient(patient)); } catch {}
       setStatus("");
@@ -299,13 +305,12 @@ export default function InsurerDashboard() {
       {records.length > 0 && (
         <div className="mt-6 p-4 rounded-xl bg-white/70 backdrop-blur-sm border border-white/20 shadow-lg overflow-x-auto">
           <h3 className="font-medium mb-2 text-gray-900">Patient Records</h3>
-          {account && patient && account.toLowerCase()!==patient.toLowerCase() && (
-            <p className="text-xs text-gray-700 mb-2">As an insurer, you are viewing billing records only.</p>
-          )}
-          <table className="w-full text-sm min-w-[640px]">
+          <p className="text-xs text-gray-700 mb-2">Showing all patient medical records (you have authorized access).</p>
+          <table className="w-full text-sm min-w-[720px]">
             <thead>
               <tr className="text-left">
                 <th className="p-2">Description</th>
+                <th className="p-2">Category</th>
                 <th className="p-2">Date</th>
                 <th className="p-2">IPFS</th>
                 <th className="p-2">Actions</th>
@@ -315,6 +320,17 @@ export default function InsurerDashboard() {
               {records.map((r, i) => (
                 <tr key={i} className="border-t">
                   <td className="p-2 whitespace-normal break-words max-w-[320px]">{r.description}</td>
+                  <td className="p-2">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      r.category === 'Billing' ? 'bg-emerald-100 text-emerald-700' :
+                      r.category === 'Prescription' ? 'bg-purple-100 text-purple-700' :
+                      r.category === 'Lab' ? 'bg-blue-100 text-blue-700' :
+                      r.category === 'Imaging' ? 'bg-orange-100 text-orange-700' :
+                      'bg-gray-100 text-gray-700'
+                    }`}>
+                      {r.category || 'General'}
+                    </span>
+                  </td>
                   <td className="p-2">{new Date(Number(r.timestamp) * 1000).toLocaleString()}</td>
                   <td className="p-2"><a href={ipfsGatewayUrl(r.cid)} target="_blank" rel="noreferrer" className="text-indigo-600 hover:text-indigo-700 transition-colors text-xs break-all">Open</a></td>
                   <td className="p-2">
