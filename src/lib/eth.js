@@ -177,15 +177,63 @@ export const getContract = async (withSigner = true) => {
 
 export const storeRecord = async (patient, cid, description) => {
   const contract = await getContract(true);
-  // Do not pass fee overrides; let the wallet/provider set correct EIP-1559 or legacy fields
-  const tx = await contract.storeRecord(patient, cid, description);
-  await tx.wait();
+  // Try to estimate gas and add a safety margin; fallback to no overrides, then to a generous cap
+  try {
+    const est = await contract.estimateGas.storeRecord(patient, cid, description);
+    const margin = (est * 3n) / 2n; // 1.5x
+    const gasLimit = margin < 100000n ? 100000n : margin; // ensure reasonable floor
+    const tx = await contract.storeRecord(patient, cid, description, { gasLimit });
+    await tx.wait();
+    return;
+  } catch (e) {
+    // continue to retry paths below
+  }
+  // Retry without any overrides to let the wallet/provider decide
+  try {
+    const tx = await contract.storeRecord(patient, cid, description);
+    await tx.wait();
+    return;
+  } catch (e2) {
+    // continue to final fallback
+  }
+  // Final fallback with a high gas limit and legacy transaction type
+  try {
+    const tx = await contract.storeRecord(patient, cid, description, { gasLimit: 500000n, type: 0 });
+    await tx.wait();
+    return;
+  } catch (e3) {
+    const errMsg = (e3?.shortMessage || e3?.message || String(e3));
+    throw new Error(`Store record failed: ${errMsg}. Tips: ensure your MetaMask is on Ganache (http://127.0.0.1:7545, chainId 1337), the contract address matches this chain, and your account has test ETH.`);
+  }
 };
 
 export const storeRecordCategorized = async (patient, cid, description, category) => {
   const contract = await getContract(true);
-  const tx = await contract.storeRecordCategorized(patient, cid, description, category);
-  await tx.wait();
+  try {
+    const est = await contract.estimateGas.storeRecordCategorized(patient, cid, description, category);
+    const margin = (est * 3n) / 2n; // 1.5x
+    const gasLimit = margin < 100000n ? 100000n : margin;
+    const tx = await contract.storeRecordCategorized(patient, cid, description, category, { gasLimit });
+    await tx.wait();
+    return;
+  } catch (e) {
+    // continue to retry paths below
+  }
+  try {
+    const tx = await contract.storeRecordCategorized(patient, cid, description, category);
+    await tx.wait();
+    return;
+  } catch (e2) {
+    // continue to final fallback
+  }
+  try {
+    const tx = await contract.storeRecordCategorized(patient, cid, description, category, { gasLimit: 500000n, type: 0 });
+    await tx.wait();
+    return;
+  } catch (e3) {
+    const errMsg = (e3?.shortMessage || e3?.message || String(e3));
+    throw new Error(`Store categorized record failed: ${errMsg}. Tips: ensure your MetaMask is on Ganache (http://127.0.0.1:7545, chainId 1337), the contract address matches this chain, and your account has test ETH.`);
+  }
 };
 
 export const getRecords = async (patient) => {
